@@ -1,5 +1,5 @@
 import { q, dec, IG, storage, setting } from './lib.js';
-import { canPublish } from './policy.js';
+import { canPublish, getEffectivePlan } from './policy.js';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 let running = false;
 async function waitForContainer(id, token, context) {
@@ -61,8 +61,9 @@ async function run(p) {
   try {
     const [u] = await q('select * from users where id=$1', [p.user_id]);
     const [plan] = await q('select * from plans where id=$1', [u.plan_id]);
+    const [overrides] = await q('select * from user_plan_overrides where user_id=$1', [u.id]);
     const [a] = await q('select * from ig_accounts where id=$1', [p.account_id]);
-    const why = canPublish(u, plan, (await setting('paused')) === 'true') || (!a.enabled && 'Instagram account is disabled') || (a.status !== 'CONNECTED' && 'Instagram account needs reconnecting');
+    const why = canPublish(u, getEffectivePlan(u, plan, overrides || {}), (await setting('paused')) === 'true') || (!a.enabled && 'Instagram account is disabled') || (a.status !== 'CONNECTED' && 'Instagram account needs reconnecting');
     if (why) return q("update posts set status='BLOCKED',error=$2,updated_at=now() where id=$1", [p.id, why]);
     const mediaId = await publish(p);
     await q("update posts set status='PUBLISHED',media_id=$2,error=null,updated_at=now() where id=$1", [p.id, mediaId]);

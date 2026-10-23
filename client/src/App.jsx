@@ -237,7 +237,7 @@ function Accounts({ me, say }) {
   const [a, setA] = useState([]), load = useCallback(() => api('/accounts').then(setA), []); useEffect(() => { load(); }, [load]);
   const act = async (fn, msg) => { try { await fn(); say(msg); load(); } catch (x) { say(x.message); } };
   return <><div className="card"><p>Requires an Instagram Professional account and a configured Meta app.</p>
-    {me.metaConfigured ? <a className="btn" href="/api/ig/connect">Connect Instagram account</a> : <p className="warn">Meta app is not configured (META_APP_ID / META_APP_SECRET in .env).</p>}</div>
+    {me.metaConfigured ? <a className="btn" href="/api/ig/connect">Connect Instagram account</a> : <p className="warn">Instagram Login is not configured (META_APP_ID / META_APP_SECRET / META_REDIRECT_URI in .env).</p>}</div>
     <div className="card"><table><tbody>{a.map(x => <tr key={x.id}><td>{x.picture && <img src={x.picture} width="32" style={{ borderRadius: 16 }} />} @{x.username}</td><td><Badge s={x.status} /> {x.enabled ? 'enabled' : 'disabled'}</td>
       <td>{x.token_expires && 'token until ' + dt(x.token_expires)}{x.last_error && <div style={{ color: '#c00' }}>{x.last_error}</div>}</td><td>{x.scheduled} scheduled</td>
       <td>{x.status !== 'DISCONNECTED' && <><button className="g" onClick={() => act(() => api(`/accounts/${x.id}/enabled`, { method: 'POST', body: { enabled: !x.enabled } }), 'Updated')}>{x.enabled ? 'Disable' : 'Enable'}</button> <button className="g" onClick={() => confirm('Disconnect? Pending posts will be cancelled and the token deleted. (Disable keeps the connection.)') && act(() => api('/accounts/' + x.id, { method: 'DELETE' }), 'Disconnected')}>Disconnect</button></>}

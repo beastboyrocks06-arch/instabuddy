@@ -3,6 +3,7 @@ export function canPublish(u, plan, paused) {
   if (paused) return 'Publishing is paused by the administrator';
   if (!u.active) return 'Account is disabled';
   if (!u.publish_enabled) return 'Publishing is disabled for this user';
+  if (plan?.active === false) return 'Your plan is inactive';
   if (!plan?.publish_ok) return 'Your plan does not allow publishing';
   if (u.pay_status !== 'PAID') return 'Payment has not been confirmed';
   if (u.pay_expires && new Date(u.pay_expires) < new Date()) return 'Access has expired';

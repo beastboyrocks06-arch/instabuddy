@@ -6,6 +6,7 @@ test('unpaid blocked', () => assert.match(canPublish({ ...ok, pay_status: 'UNPAI
 test('expired blocked', () => assert.match(canPublish({ ...ok, pay_expires: '2020-01-01' }, plan, false), /expired/));
 test('global pause blocks', () => assert.match(canPublish(ok, plan, true), /paused/));
 test('plan without publishing blocks', () => assert.match(canPublish(ok, { publish_ok: false }, false), /plan/));
+test('inactive plan blocks publishing', () => assert.match(canPublish(ok, { ...plan, active: false }, false), /inactive/));
 test('disabled user blocked', () => assert.ok(canPublish({ ...ok, active: false }, plan, false)));
 test('effective plan normalizes values', () => {
   const effective = getEffectivePlan({ active: true, publish_enabled: true, pay_status: 'PAID' }, plan);

@@ -9,12 +9,13 @@ import { q, pool, migrate, enc, storage, IG, setting } from './lib.js';
 import { canPublish, getEffectivePlan } from './policy.js';
 import { tick } from './worker.js';
 const e = process.env, prod = e.NODE_ENV === 'production';
+const instagramConfigured = !!(e.META_APP_ID && e.META_APP_SECRET && e.META_REDIRECT_URI);
 const missing = ['DATABASE_URL', 'SESSION_SECRET', 'ADMIN_EMAIL', 'ADMIN_PASSWORD'].filter(k => !String(e[k] || '').trim());
 if (missing.length) {
   console.error(`Missing required environment variables: ${missing.join(', ')}. Copy .env.example to .env and fill them in.`);
   process.exit(1);
 }
-if (!e.META_APP_ID || !e.META_APP_SECRET) console.warn('! META_* not set: Instagram connect is disabled.');
+if (!instagramConfigured) console.warn('! Instagram Login is not configured: set META_APP_ID, META_APP_SECRET, and META_REDIRECT_URI.');
 if (storage.mode === 'local') console.warn('! R2 not configured: using local ./tmp-uploads (Instagram cannot fetch these unless APP_URL is public).');
 function hash(p, s = crypto.randomBytes(16)) { return new Promise((ok, no) => crypto.scrypt(p, s, 64, (er, k) => er ? no(er) : ok(s.toString('hex') + ':' + k.toString('hex')))); }
 try { await migrate(); } catch (x) { console.error('Database/migration error:', x.message); process.exit(1); }
@@ -117,7 +118,7 @@ app.get('/api/auth/me', async (req, res) => {
   const [u] = await q('select u.* from sessions s join users u on u.id=s.user_id where s.token_hash=$1 and s.expires_at>now()', [sha(t)]);
   if (!u) return bad(res, 'Please log in', 401);
   const plan = await effectivePlanOf(u);
-  res.json({ user: pub(u), plan, storageMode: storage.mode, metaConfigured: !!(e.META_APP_ID && e.META_APP_SECRET) });
+  res.json({ user: pub(u), plan, storageMode: storage.mode, metaConfigured: instagramConfigured });
 });
 app.patch('/api/auth/me', auth, h(async (req, res) => {
   const { username, phone } = req.body || {};
@@ -136,7 +137,7 @@ const admin = (req, res, next) => req.user.role === 'ADMIN' ? next() : bad(res, 
 const planOf = async u => (await q('select * from plans where id=$1', [u.plan_id]))[0];
 app.get('/api/me', auth, h(async (req, res) => {
   const plan = await effectivePlanOf(req.user), why = canPublish(req.user, plan, (await setting('paused')) === 'true');
-  res.json({ user: pub(req.user), plan, publishBlockedReason: why, storageMode: storage.mode, metaConfigured: !!(e.META_APP_ID && e.META_APP_SECRET) });
+  res.json({ user: pub(req.user), plan, publishBlockedReason: why, storageMode: storage.mode, metaConfigured: instagramConfigured });
 }));
 app.get('/api/dashboard', auth, h(async (req, res) => {
   const id = req.user.id;
@@ -149,7 +150,7 @@ app.get('/api/dashboard', auth, h(async (req, res) => {
 // ---- Instagram accounts
 app.get('/api/accounts', auth, h(async (req, res) => res.json(await q('select id,ig_user_id,username,picture,status,enabled,token_expires,last_error,(select count(*) from posts p where p.account_id=a.id and p.status=\'SCHEDULED\')::int scheduled from ig_accounts a where user_id=$1 order by created_at', [req.user.id]))));
 app.get('/api/ig/connect', auth, h(async (req, res) => {
-  if (!e.META_APP_ID) return res.redirect('/?error=' + encodeURIComponent('Meta app is not configured'));
+  if (!instagramConfigured) return res.redirect('/?error=' + encodeURIComponent('Instagram Login is not configured'));
   const s = crypto.randomBytes(16).toString('hex');
   await q('delete from instagram_oauth_states where expires_at <= now()');
   await q('insert into instagram_oauth_states(state_hash,user_id,expires_at) values($1,$2,now()+interval \'10 minutes\')', [sha(s), req.user.id]);
