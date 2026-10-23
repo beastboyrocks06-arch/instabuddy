@@ -5,7 +5,7 @@ process.env.META_APP_ID = 'test-app-id';
 process.env.META_APP_SECRET = 'test-app-secret';
 process.env.META_REDIRECT_URI = 'https://example.com/api/ig/callback';
 
-const { IG } = await import('../server/lib.js');
+const { IG, sanitizeMetaResponse } = await import('../server/lib.js');
 const jsonResponse = (body, status = 200) => ({
   ok: status >= 200 && status < 300,
   status,
@@ -66,4 +66,18 @@ test('Instagram Login can continue with a short-lived token if exchange fails', 
     globalThis.fetch = originalFetch;
     console.warn = originalWarn;
   }
+});
+
+test('Instagram audit responses redact credentials and retain useful error codes', () => {
+  assert.deepEqual(sanitizeMetaResponse({
+    access_token: 'private-token',
+    client_secret: 'private-secret',
+    error: { code: 190, message: 'Invalid access_token=private-token' },
+    id: 'media-123'
+  }), {
+    access_token: '[redacted]',
+    client_secret: '[redacted]',
+    error: { code: 190, message: 'Invalid access_token=[redacted]' },
+    id: 'media-123'
+  });
 });

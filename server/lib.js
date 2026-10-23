@@ -27,8 +27,8 @@ const s3 = r2 && new S3Client({ region: 'auto', endpoint: e.R2_ENDPOINT || `http
 const B = e.R2_BUCKET_NAME, local = k => path.join('tmp-uploads', k.replace(/[^\w.-]/g, '_'));
 export const storage = {
   mode: r2 ? 'r2' : 'local', local,
-  upload: async (k, body, size) => {
-    if (r2) return s3.send(new PutObjectCommand({ Bucket: B, Key: k, Body: body, ContentLength: size, ContentType: 'video/mp4' }));
+  upload: async (k, body, size, contentType) => {
+    if (r2) return s3.send(new PutObjectCommand({ Bucket: B, Key: k, Body: body, ContentLength: size, ContentType: contentType }));
     fs.mkdirSync('tmp-uploads', { recursive: true });
     return pipeline(body, fs.createWriteStream(local(k)));
   },
@@ -42,15 +42,37 @@ const redactMetaError = message => String(message)
   .replace(/(access_token|client_secret|code)=([^&\s"]+)/gi, '$1=[redacted]')
   .replace(/\b(IG|EA)[A-Za-z0-9]{40,}\b/g, '[redacted]')
   .replace(e.META_APP_SECRET ? new RegExp(e.META_APP_SECRET.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g') : /$^/, '[redacted]');
-async function oauthRequest(url, options, stage) {
+export const sanitizeMetaResponse = value => {
+  if (Array.isArray(value)) return value.map(sanitizeMetaResponse);
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+    key,
+    /token|secret|authorization.?code/i.test(key) ? '[redacted]' : sanitizeMetaResponse(item)
+  ]));
+  return typeof value === 'string' ? redactMetaError(value) : value;
+};
+export async function auditInstagram({ userId, accountId = null, postId = null, stage, status = null, response }) {
+  const safeResponse = sanitizeMetaResponse(response);
+  try {
+    await q('insert into audit(admin_id,action,detail) values(null,$1,$2)', [
+      `instagram.api.${stage}`,
+      { userId, accountId, postId, status, response: safeResponse }
+    ]);
+  } catch (error) {
+    error.auditFailure = true;
+    throw error;
+  }
+}
+async function oauthRequest(url, options, stage, context) {
   let response;
   try { response = await fetch(url, options); }
   catch (error) {
+    if (context?.userId) await auditInstagram({ ...context, stage, response: { networkError: redactMetaError(error.message) } });
     const failure = new Error(`Network error during ${stage}: ${redactMetaError(error.message)}`);
     failure.stage = stage;
     throw failure;
   }
   const data = await response.json().catch(() => ({}));
+  if (context?.userId) await auditInstagram({ ...context, stage, status: response.status, response: data });
   if (!response.ok || data.error || data.error_message) {
     const failure = new Error(redactMetaError(data.error?.message || data.error_message || `Instagram API error ${response.status}`));
     failure.stage = stage;
@@ -59,23 +81,34 @@ async function oauthRequest(url, options, stage) {
   }
   return data;
 }
-async function j(r) {
+async function j(r, context) {
   const d = await r.json().catch(() => ({}));
+  if (context?.userId) await auditInstagram({ ...context, status: r.status, response: d });
   if (!r.ok || d.error || d.error_message) {
-    const er = new Error(d.error?.message || d.error_message || `Instagram API error ${r.status}`);
+    const er = new Error(redactMetaError(d.error?.message || d.error_message || `Instagram API error ${r.status}`));
     er.auth = d.error?.code === 190; er.permanent = er.auth || [10, 200, 100].includes(d.error?.code);
     throw er;
   }
   return d;
 }
+async function instagramRequest(request, context) {
+  try {
+    return await j(await request, context);
+  } catch (error) {
+    if (context?.userId && !error.auditFailure && !error.auth && error.name === 'TypeError') {
+      await auditInstagram({ ...context, response: { networkError: redactMetaError(error.message) } });
+    }
+    throw error;
+  }
+}
 export const IG = {
   authUrl: s => 'https://www.instagram.com/oauth/authorize?' + new URLSearchParams({ client_id: e.META_APP_ID, redirect_uri: e.META_REDIRECT_URI, response_type: 'code', scope: e.META_SCOPES || 'instagram_business_basic,instagram_business_content_publish', state: s }),
-  async connect(code) {
+  async connect(code, context) {
     const firstResponse = await oauthRequest('https://api.instagram.com/oauth/access_token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ client_id: e.META_APP_ID, client_secret: e.META_APP_SECRET, grant_type: 'authorization_code', redirect_uri: e.META_REDIRECT_URI, code: code.replace(/#_$/, '') })
-    }, 'token_exchange');
+    }, 'token_exchange', context);
     const first = Array.isArray(firstResponse.data) ? firstResponse.data[0] : firstResponse;
     if (!first?.access_token) {
       const error = new Error('Instagram did not return an access token.');
@@ -86,16 +119,17 @@ export const IG = {
     let token = first.access_token;
     let expiresIn = first.expires_in;
     try {
-      const longLived = await oauthRequest(`${GH}/access_token?` + new URLSearchParams({ grant_type: 'ig_exchange_token', client_secret: e.META_APP_SECRET, access_token: token }), {}, 'long_lived_exchange');
+      const longLived = await oauthRequest(`${GH}/access_token?` + new URLSearchParams({ grant_type: 'ig_exchange_token', client_secret: e.META_APP_SECRET, access_token: token }), {}, 'long_lived_exchange', context);
       if (longLived.access_token) {
         token = longLived.access_token;
         expiresIn = longLived.expires_in ?? expiresIn;
       }
     } catch (error) {
+      if (error.auditFailure) throw error;
       console.warn(`Instagram long-lived token exchange failed (${error.stage}): ${error.message}. Continuing with the short-lived token.`);
     }
 
-    const me = await oauthRequest(`${GH}/${V}/me?` + new URLSearchParams({ fields: 'user_id,username,profile_picture_url', access_token: token }), {}, 'account_lookup');
+    const me = await oauthRequest(`${GH}/${V}/me?` + new URLSearchParams({ fields: 'user_id,username,profile_picture_url', access_token: token }), {}, 'account_lookup', context);
     const id = me.user_id || first.user_id;
     if (!id) {
       const error = new Error('Instagram account lookup did not return a user ID.');
@@ -104,6 +138,6 @@ export const IG = {
     }
     return { token, expires: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null, id: String(id), username: me.username, picture: me.profile_picture_url };
   },
-  post: async (p, tok, body) => j(await fetch(`${GH}/${V}/${p}`, { method: 'POST', body: new URLSearchParams({ ...body, access_token: tok }) })),
-  get: async (p, tok, qs) => j(await fetch(`${GH}/${V}/${p}?` + new URLSearchParams({ ...qs, access_token: tok })))
+  post: async (p, tok, body, context) => instagramRequest(fetch(`${GH}/${V}/${p}`, { method: 'POST', body: new URLSearchParams({ ...body, access_token: tok }) }), { ...context, stage: context?.stage || 'publish' }),
+  get: async (p, tok, qs, context) => instagramRequest(fetch(`${GH}/${V}/${p}?` + new URLSearchParams({ ...qs, access_token: tok })), { ...context, stage: context?.stage || 'status' })
 };

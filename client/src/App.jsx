@@ -31,14 +31,14 @@ function LandingPage({ plans = [], openAuth }) {
         <div>
           <span className="eyebrow"><i /> Instagram Scheduling SaaS</span>
           <h1>Plan smarter.<br />Schedule faster.<br /><span>Grow your reach.</span></h1>
-          <p>Design, upload, schedule, and automate Reels publishing from one intuitive dashboard built for creators, agencies, and social managers.</p>
+          <p>Upload videos and images, schedule Reels and carousel posts, and publish across Instagram accounts from one intuitive dashboard.</p>
         
           <div className="social-proof"><span className="avatar-stack"><i>J</i><i>M</i><i>A</i></span><span>Built for creators who publish consistently</span><b>★★★★★</b></div>
         </div>
         <div className="hero-preview" aria-label="InstaBuddy publishing dashboard preview">
           <div className="preview-window"><div className="preview-top"><span>● ● ●</span><b>InstaBuddy</b><span>•••</span></div>
-            <div className="preview-content"><aside><b>Workspace</b><span>Overview</span><span>Accounts</span><span>Video library</span><span>Schedule</span></aside>
-              <div className="preview-main"><small>CONTENT OVERVIEW</small><h3>Your publishing, at a glance</h3><div className="preview-stats"><div><small>Scheduled</small><b>12</b></div><div><small>Published</small><b>48</b></div></div><div className="preview-calendar"><b>Upcoming reels</b><span>Today · 11:30 AM</span><span>Tomorrow · 4:00 PM</span><span>Friday · 9:15 AM</span></div></div>
+            <div className="preview-content"><aside><b>Workspace</b><span>Overview</span><span>Accounts</span><span>Media library</span><span>Schedule</span></aside>
+            <div className="preview-main"><small>CONTENT OVERVIEW</small><h3>Your publishing, at a glance</h3><div className="preview-stats"><div><small>Scheduled</small><b>12</b></div><div><small>Published</small><b>48</b></div></div><div className="preview-calendar"><b>Upcoming posts</b><span>Today · 11:30 AM</span><span>Tomorrow · 4:00 PM</span><span>Friday · 9:15 AM</span></div></div>
             </div>
           </div>
           <div className="preview-float">✦ <span>Ready to publish</span></div>
@@ -46,7 +46,7 @@ function LandingPage({ plans = [], openAuth }) {
       </section>
       <section id="features" className="feature-grid">
         <div className="feature"><h3>Multi-account publishing</h3><p>Queue content across multiple Instagram business profiles with one campaign workflow.</p></div>
-        <div className="feature"><h3>Video library</h3><p>Manage your video assets and keep an eye on upload size and storage.</p></div>
+        <div className="feature"><h3>Media library</h3><p>Manage video and image assets and keep an eye on upload size and storage.</p></div>
         <div className="feature"><h3>Admin controls</h3><p>Manage plans, payments, publishing policies, and user permissions from one place.</p></div>
       </section>
       <section id="how-it-works" className="steps"><h2>How it works</h2><div className="steps-grid">
@@ -107,7 +107,7 @@ function Auth({ done, plans = [], initialMode = 'login', selectedPlanId, onClose
       <button type="button" className="auth-close" aria-label="Close" onClick={onClose}>×</button>
       <div className="auth-brand-mark"><span><i /></span></div>
       <h2 id="auth-title">{m === 'login' ? 'Log in to InstaBuddy' : 'Create your account'}</h2>
-      <p className="auth-subtitle">{m === 'login' ? 'Manage and schedule your Instagram Reels effortlessly' : 'Start your InstaBuddy creator account'}</p>
+      <p className="auth-subtitle">{m === 'login' ? 'Schedule Instagram Reels, images, and carousels with ease' : 'Start your InstaBuddy creator account'}</p>
       <div className="auth-divider"><span>Or email</span></div>
       {m === 'signup' && <label>Full Name<input autoComplete="name" placeholder="John Doe" value={f.name || ''} onChange={event => setF({ ...f, name: event.target.value })} required /></label>}
       <label>Email Address<input type="email" autoComplete="email" placeholder="you@example.com" value={f.email || ''} onChange={event => setF({ ...f, email: event.target.value })} required /></label>
@@ -139,7 +139,7 @@ function SimpleLanding({ plans, done }) {
         <div className="simple-intro">
           <p className="simple-proof">Built for creators who publish consistently <span aria-label="5 stars">★★★★★</span></p>
           <h1>Plan smarter. Schedule faster. Grow your reach.</h1>
-          <p>Design, upload, schedule, and automate Reels publishing from one intuitive dashboard built for creators, agencies, and social managers.</p>
+          <p>Upload videos and images, schedule Reels and carousel posts, and publish across Instagram accounts from one intuitive dashboard.</p>
         </div>
         <InlineAuth plans={plans} mode={mode} setMode={setMode} selectedPlanId={selectedPlanId || freePlan?.id || plans[0]?.id || ''} onPlanChange={setSelectedPlanId} done={done} />
       </section>
@@ -230,7 +230,7 @@ function Overview({ me }) {
   if (!d) return <p>Loading…</p>;
   const S = ({ l, v }) => <div className="card stat"><b>{v}</b>{l}</div>;
   return <><div className="card">Plan: <b>{me.plan?.name}</b> · Payment: <Badge s={me.user.pay_status} />{me.user.pay_expires && <> · expires {dt(me.user.pay_expires)}</>}</div>
-    <div className="grid"><S l="Connected accounts" v={`${d.accounts} / ${me.plan.max_accounts}`} /><S l="Enabled" v={d.enabled} /><S l="Videos" v={d.videos} /><S l="Storage" v={mb(d.bytes)} /><S l="Scheduled" v={d.scheduled} /><S l="Published" v={d.published} /><S l="Failed/blocked" v={d.failed} /></div>
+    <div className="grid"><S l="Connected accounts" v={`${d.accounts} / ${me.plan.max_accounts}`} /><S l="Enabled" v={d.enabled} /><S l="Media items" v={d.videos} /><S l="Storage" v={mb(d.bytes)} /><S l="Scheduled" v={d.scheduled} /><S l="Published" v={d.published} /><S l="Failed/blocked" v={d.failed} /></div>
     {+d.accounts === 0 && <div className="card">No Instagram account yet. Open “Accounts” to connect one.</div>}</>;
 }
 function Accounts({ me, say }) {
@@ -254,15 +254,15 @@ function Videos({ me, say }) {
     try {
       const created = await api('/videos', { method: 'POST', body: { filename: file.name, size: file.size } });
       id = created.id;
-      setUpload({ phase: 'Uploading video', percent: 0 });
+      setUpload({ phase: 'Uploading media', percent: 0 });
       await new Promise((ok, no) => {
         const x = new XMLHttpRequest();
         x.open('PUT', created.url);
         x.setRequestHeader('x-requested-with', 'web');
-        x.setRequestHeader('Content-Type', 'video/mp4');
+        x.setRequestHeader('Content-Type', created.contentType);
         x.upload.onprogress = p => {
           const total = p.lengthComputable ? p.total : file.size;
-          if (total > 0) setUpload({ phase: 'Uploading video', percent: Math.min(100, Math.round(p.loaded / total * 100)) });
+          if (total > 0) setUpload({ phase: 'Uploading media', percent: Math.min(100, Math.round(p.loaded / total * 100)) });
         };
         x.onload = () => x.status < 300 ? ok() : no(new Error(`Upload failed (${x.status}${x.statusText ? ` ${x.statusText}` : ''})`));
         x.onerror = () => no(new Error('Upload failed due to a network error.'));
@@ -284,28 +284,43 @@ function Videos({ me, say }) {
       say(message);
     } finally { load(); }
   };
-  return <><div className="card"><input type="file" accept=".mp4,.mov,video/*" onChange={event => { const file = event.target.files[0]; event.target.value = ''; up(file); }} disabled={uploading} />
+  return <><div className="card"><input type="file" accept=".mp4,.mov,.jpg,.jpeg,video/mp4,video/quicktime,image/jpeg" onChange={event => { const file = event.target.files[0]; event.target.value = ''; up(file); }} disabled={uploading} />
     {upload && <div className="video-upload-progress" role="status" aria-live="polite"><span>{upload.phase}{upload.percent !== null && `: ${upload.percent}%`}</span><progress aria-label="Video upload progress" max="100" value={upload.percent ?? undefined} /></div>}
     {uploadError && <p className="video-upload-error" role="alert">{uploadError}</p>}
-    <small>Max {me.plan.max_mb} MB · storage: {me.storageMode}</small></div>
-    <div className="card"><table><tbody>{v.map(x => <tr key={x.id}><td>{x.filename}</td><td>{mb(x.size)}</td><td><Badge s={x.status} /></td><td>{dt(x.created_at)}</td>
-      <td><button className="g" onClick={async () => { try { await api('/videos/' + x.id, { method: 'DELETE' }); load(); } catch (e) { say(e.message); } }}>Delete</button></td></tr>)}</tbody></table>{!v.length && <p>No videos yet.</p>}</div></>;
+    <small>MP4/MOV videos and JPEG images · max {me.plan.max_mb} MB · storage: {me.storageMode}</small></div>
+    <div className="card"><table><tbody>{v.map(x => <tr key={x.id}><td>{x.filename}</td><td>{x.media_type === 'IMAGE' ? 'Image' : 'Video'}</td><td>{mb(x.size)}</td><td><Badge s={x.status} /></td><td>{dt(x.created_at)}</td>
+      <td><button className="g" onClick={async () => { try { await api('/videos/' + x.id, { method: 'DELETE' }); load(); } catch (e) { say(e.message); } }}>Delete</button>      </td></tr>)}</tbody></table>{!v.length && <p>No media yet.</p>}</div></>;
 }
 function Schedule({ me, say }) {
-  const [vs, setVs] = useState([]), [as, setAs] = useState([]), [posts, setPosts] = useState([]), [sel, setSel] = useState({ accounts: [], times: [''], caption: '' });
-  const load = useCallback(() => { api('/videos').then(x => setVs(x.filter(y => y.status === 'READY'))); api('/accounts').then(x => setAs(x.filter(y => y.enabled && y.status === 'CONNECTED'))); api('/posts').then(setPosts); }, []); useEffect(() => { load(); }, [load]);
+  const [media, setMedia] = useState([]), [as, setAs] = useState([]), [posts, setPosts] = useState([]);
+  const [sel, setSel] = useState({ postType: 'REEL', mediaIds: [], accounts: [], times: [''], caption: '' });
+  const load = useCallback(() => { api('/videos').then(x => setMedia(x.filter(y => y.status === 'READY'))); api('/accounts').then(x => setAs(x.filter(y => y.enabled && y.status === 'CONNECTED'))); api('/posts').then(setPosts); }, []); useEffect(() => { load(); }, [load]);
   const times = sel.times.filter(Boolean), jobs = sel.accounts.length * times.length;
-  const send = async now => { try { const r = await api('/posts', { method: 'POST', body: { videoId: sel.video, accountIds: sel.accounts, times: now ? ['now'] : times.map(t => new Date(t).toISOString()), caption: sel.caption } }); say(`${r.created} job(s) created${r.duplicatesSkipped ? `, ${r.duplicatesSkipped} duplicate(s) skipped` : ''}`); load(); } catch (x) { say(x.message); } };
+  const options = sel.postType === 'REEL' ? media.filter(x => x.media_type === 'VIDEO') : sel.postType === 'IMAGE' ? media.filter(x => x.media_type === 'IMAGE') : media;
+  const toggleAccount = (id, checked) => setSel(current => ({ ...current, accounts: checked ? [...new Set([...current.accounts, id])] : current.accounts.filter(item => item !== id) }));
+  const toggleMedia = (id, checked) => setSel(current => ({ ...current, mediaIds: checked ? [...new Set([...current.mediaIds, id])] : current.mediaIds.filter(item => item !== id) }));
+  const send = async now => { try { const r = await api('/posts', { method: 'POST', body: { postType: sel.postType, mediaIds: sel.mediaIds, accountIds: sel.accounts, times: now ? ['now'] : times.map(t => new Date(t).toISOString()), caption: sel.caption } }); say(`${r.created} job(s) created${r.duplicatesSkipped ? `, ${r.duplicatesSkipped} duplicate(s) skipped` : ''}`); load(); } catch (x) { say(x.message); } };
   const act = async (id, a) => { try { await api(`/posts/${id}/${a}`, { method: 'POST' }); load(); } catch (x) { say(x.message); } };
+  const selectionValid = sel.postType === 'CAROUSEL' ? sel.mediaIds.length >= 2 && sel.mediaIds.length <= 10 : sel.mediaIds.length === 1;
+  const typeName = { REEL: 'Reel', IMAGE: 'Image', CAROUSEL: 'Carousel' };
   return <>{me.publishBlockedReason && <div className="warn">Publishing blocked: {me.publishBlockedReason}</div>}
-    <div className="card"><h3>New post</h3><select onChange={x => setSel({ ...sel, video: x.target.value })} defaultValue=""><option value="" disabled>Select video</option>{vs.map(x => <option key={x.id} value={x.id}>{x.filename}</option>)}</select>
-      {as.map(a => <label key={a.id} style={{ display: 'block' }}><input type="checkbox" style={{ width: 'auto' }} onChange={x => setSel({ ...sel, accounts: x.target.checked ? [...sel.accounts, a.id] : sel.accounts.filter(i => i !== a.id) })} /> @{a.username}</label>)}
+    <div className="card"><h3>New post</h3>
+      <label>Post type<select value={sel.postType} onChange={event => setSel({ ...sel, postType: event.target.value, mediaIds: [] })}><option value="REEL">Reel</option><option value="IMAGE">Image</option><option value="CAROUSEL">Carousel (2–10 items)</option></select></label>
+      <fieldset className="schedule-selection"><legend>{sel.postType === 'CAROUSEL' ? 'Choose 2–10 carousel items' : `Choose ${sel.postType === 'IMAGE' ? 'an image' : 'a video'}`}</legend>
+        {options.map(item => <label key={item.id}><input type={sel.postType === 'CAROUSEL' ? 'checkbox' : 'radio'} name="post-media" checked={sel.mediaIds.includes(item.id)} onChange={event => sel.postType === 'CAROUSEL' ? toggleMedia(item.id, event.target.checked) : setSel({ ...sel, mediaIds: [item.id] })} /> {item.filename} <small>({item.media_type === 'IMAGE' ? 'JPEG image' : 'video'})</small></label>)}
+        {!options.length && <p>No matching media yet. Upload items in the Media Library.</p>}
+      </fieldset>
+      <fieldset className="schedule-selection"><legend>Select Instagram accounts</legend>
+        <label><input type="checkbox" checked={as.length > 0 && sel.accounts.length === as.length} onChange={event => setSel({ ...sel, accounts: event.target.checked ? as.map(account => account.id) : [] })} /> Select all accounts</label>
+        {as.map(a => <label key={a.id}><input type="checkbox" checked={sel.accounts.includes(a.id)} onChange={event => toggleAccount(a.id, event.target.checked)} /> @{a.username}</label>)}
+        {!as.length && <p>No connected, enabled accounts available.</p>}
+      </fieldset>
       {sel.times.map((t, i) => <input key={i} type="datetime-local" value={t} onChange={x => setSel({ ...sel, times: sel.times.map((o, j) => j === i ? x.target.value : o) })} />)}
       <button className="g" onClick={() => setSel({ ...sel, times: [...sel.times, ''] })}>+ Add date/time</button>
       <textarea placeholder="Caption" onChange={x => setSel({ ...sel, caption: x.target.value })} />
-      <p>{sel.accounts.length} account(s) × {times.length} time(s) = <b>{jobs}</b> publishing job(s). Times use your browser timezone and are stored in UTC.</p>
-      <button className="p" disabled={!sel.video || !jobs} onClick={() => send(false)}>Schedule</button> <button className="g" disabled={!sel.video || !sel.accounts.length} onClick={() => confirm(`Publish now to ${sel.accounts.length} account(s)?`) && send(true)}>Publish now</button></div>
-    <div className="card"><h3>Jobs</h3><table><tbody>{posts.map(p => <tr key={p.id}><td>{dt(p.run_at)}</td><td>@{p.username}</td><td>{p.filename}</td><td><Badge s={p.status} />{p.error && <div style={{ color: '#c00', fontSize: 12 }}>{p.error}</div>}</td>
+      <p>{sel.mediaIds.length} {sel.postType === 'CAROUSEL' ? 'item(s)' : 'media item'} · {sel.accounts.length} account(s) × {times.length} time(s) = <b>{jobs}</b> {typeName[sel.postType].toLowerCase()} publishing job(s). Times use your browser timezone and are stored in UTC.</p>
+      <button className="p" disabled={!selectionValid || !jobs} onClick={() => send(false)}>Schedule</button> <button className="g" disabled={!selectionValid || !sel.accounts.length} onClick={() => confirm(`Publish this ${typeName[sel.postType].toLowerCase()} now to ${sel.accounts.length} account(s)?`) && send(true)}>Publish now</button></div>
+    <div className="card"><h3>Jobs</h3><table><tbody>{posts.map(p => <tr key={p.id}><td>{dt(p.run_at)}</td><td>@{p.username}</td><td>{p.post_type === 'REEL' ? 'Reel' : p.post_type === 'IMAGE' ? 'Image' : 'Carousel'}: {p.filename}</td><td><Badge s={p.status} />{p.error && <div style={{ color: '#c00', fontSize: 12 }}>{p.error}</div>}</td>
       <td>{['SCHEDULED', 'FAILED', 'BLOCKED'].includes(p.status) && <button className="g" onClick={() => act(p.id, 'cancel')}>Cancel</button>} {['FAILED', 'BLOCKED'].includes(p.status) && <button className="g" onClick={() => act(p.id, 'retry')}>Retry</button>}</td></tr>)}</tbody></table>{!posts.length && <p>Nothing scheduled.</p>}</div></>;
 }
 function Admin({ say }) {
@@ -430,7 +445,7 @@ function Admin({ say }) {
         </td></tr>}
       </Fragment>;
     })}</tbody></table></div>
-    {o && <div className="card"><h3>Failed jobs</h3>{o.failed.map(f => <p key={f.id}>{f.email}: {f.error}</p>)}<h3>Audit log</h3>{o.audit.map((a, i) => <p key={i}><small>{dt(a.at)} {a.action} {JSON.stringify(a.detail)}</small></p>)}</div>}</>;
+    {o && <div className="card"><h3>Failed jobs</h3>{o.failed.map(f => <p key={f.id}>{f.email}: {f.error}</p>)}<h3>Audit log</h3>{o.audit.map((a, i) => <p key={i}><small>{dt(a.at)} {a.action}{a.user_email && ` · ${a.user_email}`}{a.account_username && ` · @${a.account_username}`}<br />{JSON.stringify(a.detail)}</small></p>)}</div>}</>;
 }
 export default function App() {
   const [me, setMe] = useState(undefined), [tab, setTab] = useState('Overview'), [msg, setMsg] = useState(''), [plans, setPlans] = useState([]);
@@ -440,9 +455,9 @@ export default function App() {
   useEffect(() => { const p = new URLSearchParams(location.search); if (p.get('error')) say(p.get('error')); if (p.get('connected')) say('Instagram account connected'); if ([...p].length) history.replaceState({}, '', '/'); }, []);
   if (me === undefined) return <p style={{ padding: 24 }}>Loading…</p>;
   if (!me) return <><SimpleLanding plans={plans} done={load} />{msg && <div className="toast">{msg}</div>}</>;
-  const tabs = ['Overview', 'Accounts', 'Videos', 'Schedule', ...(me.user.role === 'ADMIN' ? ['Admin'] : [])];
+  const tabs = ['Overview', 'Accounts', 'Media Library', 'Schedule', ...(me.user.role === 'ADMIN' ? ['Admin'] : [])];
   const P = { me, say };
   return <div className="app"><nav><b style={{ color: '#fff', marginBottom: 8 }}>Reel Scheduler</b>{tabs.map(t => <button key={t} className={t === tab ? 'on' : ''} onClick={() => setTab(t)}>{t}</button>)}
     <button onClick={async () => { await api('/auth/logout', { method: 'POST' }); setMe(null); }}>Log out</button></nav>
-    <main><h2>{tab}</h2>{tab === 'Overview' && <Overview {...P} />}{tab === 'Accounts' && <Accounts {...P} />}{tab === 'Videos' && <Videos {...P} />}{tab === 'Schedule' && <Schedule {...P} />}{tab === 'Admin' && (me.user.role === 'ADMIN' ? <Admin say={say} /> : <div className="card">Admins only.</div>)}</main>{msg && <div className="toast">{msg}</div>}</div>;
+    <main><h2>{tab}</h2>{tab === 'Overview' && <Overview {...P} />}{tab === 'Accounts' && <Accounts {...P} />}{tab === 'Media Library' && <Videos {...P} />}{tab === 'Schedule' && <Schedule {...P} />}{tab === 'Admin' && (me.user.role === 'ADMIN' ? <Admin say={say} /> : <div className="card">Admins only.</div>)}</main>{msg && <div className="toast">{msg}</div>}</div>;
 }

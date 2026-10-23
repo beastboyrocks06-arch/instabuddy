@@ -83,8 +83,9 @@ app.post('/api/auth/login', authLimit, h(async (req, res) => {
 }));
 app.post('/api/auth/logout', h(async (req, res) => { if (req.cookies.sid) await q('delete from sessions where token_hash=$1', [sha(req.cookies.sid)]); res.clearCookie('sid'); res.json({ ok: true }); }));
 app.get('/api/media/:key', h(async (req, res) => { // unguessable key; used by Instagram in local mode
-  const [v] = await q("select 1 from videos where key=$1 and status<>'DELETED'", [req.params.key]);
+  const [v] = await q("select content_type from videos where key=$1 and status<>'DELETED'", [req.params.key]);
   if (!v || storage.mode !== 'local') return bad(res, 'Not found', 404);
+  res.type(v.content_type);
   res.sendFile(storage.local(req.params.key), { root: process.cwd() });
 }));
 const auth = async (req, res, next) => {
@@ -167,7 +168,7 @@ app.get('/api/ig/callback', h(async (req, res) => {
   try {
     const [user] = await q('select * from users where id=$1 and active=true', [consumedState.user_id]);
     if (!user) return fail('Your account is unavailable. Please log in and try again.');
-    const a = await IG.connect(req.query.code), plan = await effectivePlanOf(user);
+    const a = await IG.connect(req.query.code, { userId: user.id, stage: 'oauth' }), plan = await effectivePlanOf(user);
     const [ex] = await q('select 1 from ig_accounts where user_id=$1 and ig_user_id=$2', [user.id, a.id]);
     const [{ n }] = await q("select count(*)::int n from ig_accounts where user_id=$1 and status<>'DISCONNECTED'", [user.id]);
     if (!ex && n >= plan.max_accounts) return fail(`Your plan allows ${plan.max_accounts} connected account(s)`);
@@ -186,14 +187,18 @@ app.delete('/api/accounts/:id', auth, h(async (req, res) => { // disconnect: dro
   await q("update posts set status='CANCELLED',error='Account disconnected',updated_at=now() where account_id=$1 and status='SCHEDULED'", [req.params.id]); res.json({ ok: true });
 }));
 // ---- Videos
-app.get('/api/videos', auth, h(async (req, res) => res.json(await q("select id,filename,size,status,created_at from videos where user_id=$1 and status<>'DELETED' order by created_at desc limit 100", [req.user.id]))));
+app.get('/api/videos', auth, h(async (req, res) => res.json(await q("select id,filename,size,status,media_type,content_type,created_at from videos where user_id=$1 and status<>'DELETED' order by created_at desc limit 100", [req.user.id]))));
 app.post('/api/videos', auth, h(async (req, res) => {
   const { filename, size } = req.body || {}, plan = await effectivePlanOf(req.user);
-  if (!/\.(mp4|mov)$/i.test(filename || '')) return bad(res, 'Only .mp4 or .mov files are allowed');
+  const extension = String(filename || '').toLowerCase().match(/\.(mp4|mov|jpe?g)$/)?.[1];
+  if (!extension) return bad(res, 'Choose an MP4 or MOV video, or a JPEG image');
   if (!(size > 0) || size > plan.max_mb * 1048576) return bad(res, `File must be under ${plan.max_mb} MB on your plan`);
-  const key = `${req.user.id}/${crypto.randomBytes(16).toString('hex')}.mp4`;
-  const [v] = await q('insert into videos(user_id,key,filename,size) values($1,$2,$3,$4) returning id', [req.user.id, key, String(filename).slice(0, 200), size]);
-  res.json({ id: v.id, url: `/api/videos/${v.id}/upload` });
+  const image = extension === 'jpg' || extension === 'jpeg';
+  const mediaType = image ? 'IMAGE' : 'VIDEO';
+  const contentType = image ? 'image/jpeg' : extension === 'mov' ? 'video/quicktime' : 'video/mp4';
+  const key = `${req.user.id}/${crypto.randomBytes(16).toString('hex')}.${extension}`;
+  const [v] = await q('insert into videos(user_id,key,filename,size,media_type,content_type) values($1,$2,$3,$4,$5,$6) returning id', [req.user.id, key, String(filename).slice(0, 200), size, mediaType, contentType]);
+  res.json({ id: v.id, url: `/api/videos/${v.id}/upload`, contentType });
 }));
 app.put('/api/videos/:id/upload', auth, h(async (req, res) => {
   const [v] = await q('select * from videos where id=$1 and user_id=$2', [req.params.id, req.user.id]);
@@ -220,7 +225,7 @@ app.put('/api/videos/:id/upload', auth, h(async (req, res) => {
     }
   });
   try {
-    await storage.upload(v.key, req.pipe(body), expectedSize);
+    await storage.upload(v.key, req.pipe(body), expectedSize, v.content_type);
   } catch (error) {
     try { await storage.del(v.key); }
     catch (cleanupError) { console.error('Failed to clean up incomplete video upload:', cleanupError.message); }
@@ -240,25 +245,59 @@ app.post('/api/videos/:id/complete', auth, h(async (req, res) => {
 app.delete('/api/videos/:id', auth, h(async (req, res) => {
   const [v] = await q('select * from videos where id=$1 and user_id=$2', [req.params.id, req.user.id]);
   if (!v) return bad(res, 'Not found', 404);
-  if ((await q("select 1 from posts where video_id=$1 and status in('SCHEDULED','PROCESSING')", [v.id])).length) return bad(res, 'This video has pending posts. Cancel them first.', 409);
+  if ((await q("select 1 from posts p where (p.video_id=$1 or exists(select 1 from post_media pm where pm.post_id=p.id and pm.media_id=$1)) and p.status in('SCHEDULED','PROCESSING')", [v.id])).length) return bad(res, 'This media has pending posts. Cancel them first.', 409);
   await storage.del(v.key); await q("update videos set status='DELETED' where id=$1", [v.id]); res.json({ ok: true });
 }));
 // ---- Posts
-app.get('/api/posts', auth, h(async (req, res) => res.json(await q('select p.id,p.run_at,p.status,p.error,p.attempts,p.caption,a.username,v.filename from posts p join ig_accounts a on a.id=p.account_id join videos v on v.id=p.video_id where p.user_id=$1 order by p.run_at desc limit 200', [req.user.id]))));
+app.get('/api/posts', auth, h(async (req, res) => res.json(await q(`select p.id,p.run_at,p.status,p.error,p.attempts,p.caption,p.post_type,a.username,
+  coalesce(v.filename,(select string_agg(vm.filename, ', ' order by pm.position) from post_media pm join videos vm on vm.id=pm.media_id where pm.post_id=p.id)) filename
+  from posts p join ig_accounts a on a.id=p.account_id left join videos v on v.id=p.video_id where p.user_id=$1 order by p.run_at desc limit 200`, [req.user.id]))));
 app.post('/api/posts', auth, h(async (req, res) => {
-  const { videoId, accountIds, times, caption } = req.body || {}, plan = await effectivePlanOf(req.user);
+  const { videoId, mediaIds, postType = 'REEL', accountIds, times, caption } = req.body || {}, plan = await effectivePlanOf(req.user);
   const why = canPublish(req.user, plan, (await setting('paused')) === 'true'); if (why) return bad(res, why, 403);
-  if (!Array.isArray(accountIds) || !accountIds.length || !Array.isArray(times) || !times.length) return bad(res, 'Choose a video, at least one account and one time');
+  if (!Array.isArray(accountIds) || !accountIds.length || !Array.isArray(times) || !times.length) return bad(res, 'Choose media, at least one account and one time');
+  if (!['REEL', 'IMAGE', 'CAROUSEL'].includes(postType)) return bad(res, 'Choose a supported post type');
+  const selectedMediaIds = Array.isArray(mediaIds) ? mediaIds : videoId ? [videoId] : [];
+  if (!selectedMediaIds.length || new Set(selectedMediaIds).size !== selectedMediaIds.length) return bad(res, 'Choose media for your post');
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (selectedMediaIds.some(id => typeof id !== 'string' || !uuid.test(id)) || accountIds.some(id => typeof id !== 'string' || !uuid.test(id))) return bad(res, 'Some selected media or accounts are invalid');
+  if ((postType === 'CAROUSEL' && (selectedMediaIds.length < 2 || selectedMediaIds.length > 10)) ||
+    (postType !== 'CAROUSEL' && selectedMediaIds.length !== 1)) return bad(res, 'Carousel posts need 2–10 items; Reels and image posts need one item');
   if (accountIds.length * times.length > 200) return bad(res, 'Too many jobs in one request (max 200)');
-  const [v] = await q("select * from videos where id=$1 and user_id=$2 and status='READY'", [videoId, req.user.id]); if (!v) return bad(res, 'Video not found or not ready');
+  const selectedMedia = await q("select * from videos where id=any($1::uuid[]) and user_id=$2 and status='READY'", [selectedMediaIds, req.user.id]);
+  const mediaById = new Map(selectedMedia.map(media => [media.id, media]));
+  if (selectedMedia.length !== selectedMediaIds.length) return bad(res, 'Some selected media is unavailable or not yours');
+  const orderedMedia = selectedMediaIds.map(id => mediaById.get(id));
+  if (postType === 'REEL' && orderedMedia[0].media_type !== 'VIDEO') return bad(res, 'Reels require a video');
+  if (postType === 'IMAGE' && orderedMedia[0].media_type !== 'IMAGE') return bad(res, 'Image posts require a JPEG image');
   const accs = await q("select id from ig_accounts where id=any($1::uuid[]) and user_id=$2 and enabled and status='CONNECTED'", [accountIds, req.user.id]);
   if (accs.length !== new Set(accountIds).size) return bad(res, 'Some accounts are disabled, disconnected, or not yours');
   const when = times.map(t => (t === 'now' ? new Date() : new Date(t))); const max = Date.now() + plan.horizon_days * 864e5;
   if (when.some(d => isNaN(d) || d > max || d < new Date(Date.now() - 60e3))) return bad(res, `Times must be in the future and within ${plan.horizon_days} days`);
   const [{ n }] = await q("select count(*)::int n from posts where user_id=$1 and status<>'CANCELLED' and created_at>=date_trunc('month',now())", [req.user.id]);
   if (n + accs.length * when.length > plan.monthly_posts) return bad(res, `This would exceed your monthly allowance of ${plan.monthly_posts} posts (${n} used)`, 403);
+  const fingerprint = crypto.createHash('sha256').update(selectedMediaIds.join(':')).digest('hex');
+  const client = await pool.connect();
   let made = 0;
-  for (const a of accs) for (const d of when) made += (await q('insert into posts(user_id,video_id,account_id,caption,run_at) values($1,$2,$3,$4,$5) on conflict do nothing returning id', [req.user.id, v.id, a.id, String(caption || '').slice(0, 2200), d])).length;
+  try {
+    await client.query('begin');
+    for (const a of accs) for (const d of when) {
+      const created = await client.query(`insert into posts(user_id,video_id,account_id,caption,run_at,post_type,media_fingerprint)
+        values($1,$2,$3,$4,$5,$6,$7) on conflict do nothing returning id`,
+      [req.user.id, postType === 'CAROUSEL' ? null : orderedMedia[0].id, a.id, String(caption || '').slice(0, 2200), d, postType, fingerprint]);
+      if (!created.rows.length) continue;
+      for (const [position, media] of orderedMedia.entries()) {
+        await client.query('insert into post_media(post_id,media_id,position) values($1,$2,$3)', [created.rows[0].id, media.id, position]);
+      }
+      made += 1;
+    }
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback');
+    throw error;
+  } finally {
+    client.release();
+  }
   res.json({ created: made, duplicatesSkipped: accs.length * when.length - made });
   if (when.some(d => d <= new Date())) tick().catch(console.error);
 }));
@@ -336,7 +375,10 @@ app.get('/api/admin/overview', ...adm, h(async (_, res) => res.json({
   stats: (await q(`select (select count(*) from users)::int users,(select count(*) from ig_accounts where status='CONNECTED')::int accounts,(select count(*) from ig_accounts where status='REAUTH_REQUIRED')::int reauth,
     (select coalesce(sum(size),0) from videos where status='READY')::bigint bytes,(select count(*) from posts where status='SCHEDULED')::int scheduled,(select count(*) from posts where status='PUBLISHED')::int published`))[0],
   failed: await q("select p.id,p.error,p.run_at,u.email from posts p join users u on u.id=p.user_id where p.status='FAILED' order by p.updated_at desc limit 20"),
-  audit: await q('select action,detail,at from audit order by id desc limit 20') })));
+  audit: await q(`select a.action,a.detail,a.at,u.email as user_email,ig.username as account_username
+    from audit a left join users u on u.id::text=a.detail->>'userId'
+    left join ig_accounts ig on ig.id::text=a.detail->>'accountId'
+    order by a.id desc limit 50`) })));
 app.use('/api', (req, res) => bad(res, 'Not found', 404));
 app.use((err, req, res, _n) => {
   console.error(err.message);
