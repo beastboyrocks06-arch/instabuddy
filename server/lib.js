@@ -37,7 +37,7 @@ export const storage = {
   del: async k => { if (r2) await s3.send(new DeleteObjectCommand({ Bucket: B, Key: k })); else fs.rmSync(local(k), { force: true }); }
 };
 
-const V = e.META_GRAPH_API_VERSION || 'v26.0', GH = 'https://graph.instagram.com';
+const V = e.META_GRAPH_API_VERSION || 'v21.0', GH = 'https://graph.instagram.com';
 const redactMetaError = message => String(message)
   .replace(/(access_token|client_secret|code)=([^&\s"]+)/gi, '$1=[redacted]')
   .replace(/\b(IG|EA)[A-Za-z0-9]{40,}\b/g, '[redacted]')
@@ -119,7 +119,7 @@ export const IG = {
     let token = first.access_token;
     let expiresIn = first.expires_in;
     try {
-      const longLived = await oauthRequest(`${GH}/access_token?` + new URLSearchParams({ grant_type: 'ig_exchange_token', client_secret: e.META_APP_SECRET, access_token: token }), { method: 'GET' }, 'long_lived_exchange', context);
+      const longLived = await oauthRequest(`${GH}/access_token?` + new URLSearchParams({ grant_type: 'ig_exchange_token', client_secret: e.META_APP_SECRET, access_token: token }), {}, 'long_lived_exchange', context);
       if (longLived.access_token) {
         token = longLived.access_token;
         expiresIn = longLived.expires_in ?? expiresIn;
@@ -129,7 +129,7 @@ export const IG = {
       console.warn(`Instagram long-lived token exchange failed (${error.stage}): ${error.message}. Continuing with the short-lived token.`);
     }
 
-    const meResponse = await oauthRequest(`${GH}/${V}/me?` + new URLSearchParams({ fields: 'user_id,username,profile_picture_url', access_token: token }), { method: 'GET' }, 'account_lookup', context);
+    const meResponse = await oauthRequest(`${GH}/${V}/me?` + new URLSearchParams({ fields: 'user_id,username', access_token: token }), {}, 'account_lookup', context);
     const me = Array.isArray(meResponse.data) ? meResponse.data[0] : meResponse;
     const id = me?.user_id || first.user_id;
     if (!id) {
